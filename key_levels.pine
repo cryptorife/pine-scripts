@@ -1,0 +1,327 @@
+// Kely levels for Daily, Weekly and Monthly Open, and Weekday Range
+// Weekday Range can be configured for any day of week (e.g. Monday Range).
+// Initial Balance and Session Timezones are also part of this indicator.
+// Code from mitchv and modified by crypto_rife
+
+//@version=4
+study("Key Levels", shorttitle = "Key Levels", overlay = true)
+
+[daily_time, daily_open, daily_high, daily_low] = security(syminfo.tickerid, 'D', [time, open, high, low], lookahead = barmerge.lookahead_on)
+[weekly_time, weekly_open] = security(syminfo.tickerid, 'W', [time, open], lookahead = barmerge.lookahead_on)
+[monthly_time, monthly_open] = security(syminfo.tickerid, 'M', [time, open], lookahead = barmerge.lookahead_on)
+[pd_time, pd_open, pd_high, pd_low] = security(syminfo.tickerid,"D", [time, open, high, low],barmerge.gaps_off,barmerge.lookahead_on) 
+pwH = security(syminfo.tickerid,"W",high,barmerge.gaps_off,barmerge.lookahead_on) 
+pwL = security(syminfo.tickerid,"W",low,barmerge.gaps_off,barmerge.lookahead_on)
+
+//------------------------------ Inputs -------------------------------
+
+var is_daily_enabled = input(defval = true, title = "Daily Open", type = input.bool)
+var daily_color = input(color.gray, title="Daily Open Line Color", type = input.color)
+var is_weekly_enabled = input(defval = true, title = "Weeky Open", type = input.bool)
+var weekly_color = input(color.gray, title="Weekly Open Line Color", type = input.color)
+var is_monthly_enabled = input(defval = true, title = "Monthly Open", type = input.bool)
+var monthly_color = input(color.gray, title="Monthly Open Line Color", type = input.color)
+var is_dayrange_enabled = input(defval = true, title = "Day of Week Range", type = input.bool)
+var dayrange_chosen = input("Monday", title="Day of Week Range", type = input.string, options=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+var dayrange_color = input(color.gray, title="Day of Week Range Color", type = input.color)
+var is_dOHLC_enabled = input(defval = true, title = "Previous Day OHLC", type = input.bool)
+var dOHLC_color = input(color.gray, title="Day OHLC Line Color", type = input.color)
+var label_color = input(color.gray, title="Labels Color", type = input.color)
+var is_ib_enabled = input(defval = true, title = "Initial Balance", type = input.bool)
+var is_sessions_enabled = input(defval = false, title = "Sessions Background", type = input.bool)
+var is_session_labels_enabled = input(defval = false, title = "Sessions Labels", type = input.bool)
+
+var DEFAULT_EXTEND_RIGHT = 20
+
+var line_width = 1
+var label_size = size.small
+var label_style = label.style_none
+
+var daily_line_color = daily_color
+var daily_line_width = line_width
+var daily_label_color = label_color
+var daily_label_size = label_size
+var daily_label_style = label_style
+var daily_extend_right = DEFAULT_EXTEND_RIGHT
+
+var weekly_line_color = weekly_color
+var weekly_line_width = line_width
+var weekly_label_color = label_color
+var weekly_label_size = label_size
+var weekly_label_style = label_style
+var weekly_extend_right = DEFAULT_EXTEND_RIGHT
+
+var monthly_line_color = monthly_color
+var monthly_line_width = line_width
+var monthly_label_color = label_color
+var monthly_label_size = label_size
+var monthly_label_style	= label_style
+var monthly_extend_right = DEFAULT_EXTEND_RIGHT
+
+var dayrange_line_color = dayrange_color
+var dayrange_line_width = line_width
+var dayrange_label_color = label_color
+var dayrange_label_size = label_size
+var dayrange_label_style	= label_style
+var dayrange_extend_right = DEFAULT_EXTEND_RIGHT
+
+var dOHLC_line_color = dOHLC_color
+var dOHLC_line_width = line_width
+var dOHLC_label_color = label_color
+var dOHLC_label_size = label_size
+var dOHLC_label_style	= label_style
+var dOHLC_extend_right = DEFAULT_EXTEND_RIGHT
+
+//------------------------------ Plotting ------------------------------
+var is_low_timeframe = timeframe.isminutes and (
+ timeframe.period == '120' ? false :
+ timeframe.period == '240' ? false :
+ timeframe.period  == '360' ? false :
+ timeframe.period == '540' ? false :
+ timeframe.period == '720'? false :
+ true)
+var can_show_daily = is_daily_enabled and timeframe.isintraday
+var can_show_weekly = is_weekly_enabled and not timeframe.isweekly and not timeframe.ismonthly
+var can_show_monthly = is_monthly_enabled and not timeframe.ismonthly
+var can_show_dayrange = is_dayrange_enabled and timeframe.isintraday
+var can_show_ib = is_ib_enabled and is_low_timeframe
+var can_show_sessions = is_sessions_enabled and is_low_timeframe
+var can_show_session_labels = is_session_labels_enabled and is_low_timeframe and timeframe.period != '60'
+var can_show_dOHLC = is_dOHLC_enabled
+
+get_limit_right(bars) =>
+	timenow + (time - time[1]) * bars
+
+var drange = dayrange_chosen == "Monday" ? dayofweek.monday :
+ dayrange_chosen == "Tuesday" ? dayofweek.tuesday :
+ dayrange_chosen == "Wednesday" ? dayofweek.wednesday :
+ dayrange_chosen == "Thursday" ? dayofweek.thursday :
+ dayrange_chosen == "Friday" ? dayofweek.friday :
+ dayrange_chosen == "Saturday" ? dayofweek.saturday :
+ dayrange_chosen == "Sunday" ? dayofweek.sunday :
+ dayofweek.monday
+
+var dayrange_high = float(na)
+var dayrange_low = float(na)
+var dayrange_mid = float(na)
+if (dayofweek == drange)
+    dayrange_high := daily_high
+    dayrange_low := daily_low
+    dayrange_mid := avg(dayrange_high, dayrange_low)
+
+// the following code doesn't need to be processed on every candle
+if barstate.islast
+    is_weekly_open = dayofweek == drange
+    is_monthly_open	= dayofmonth == 1
+	can_draw_daily = (is_weekly_enabled ? not is_weekly_open : true) and (is_monthly_enabled ? not is_monthly_open : true)
+	can_draw_weekly = is_monthly_enabled ? not (is_monthly_open and is_weekly_open) : true
+
+    if can_show_daily and can_draw_daily
+        daily_limit_right = get_limit_right(daily_extend_right)
+        
+        var daily_line = line.new(x1 = daily_time,
+           x2 = daily_limit_right,
+           y1 = daily_open,
+           y2 = daily_open,
+           color = daily_line_color,
+           width = daily_line_width,
+           xloc = xloc.bar_time)
+        var daily_label = label.new(x = daily_limit_right,
+           y = daily_open,
+           text = "DO    ",
+           style = daily_label_style,
+           textcolor = daily_label_color,
+           size = daily_label_size,
+           xloc = xloc.bar_time)
+
+    	line.set_x1(daily_line, daily_time)
+    	line.set_x2(daily_line, daily_limit_right)
+    	line.set_y1(daily_line, daily_open)
+    	line.set_y2(daily_line, daily_open)
+    	label.set_x(daily_label, daily_limit_right)
+        label.set_y(daily_label, daily_open)
+
+    if can_show_weekly and can_draw_weekly
+        weekly_limit_right = get_limit_right(weekly_extend_right)
+
+        var weekly_line = line.new(x1 = weekly_time,
+           x2 = weekly_limit_right,
+           y1 = weekly_open,
+           y2 = weekly_open,
+           color = weekly_line_color,
+           width = weekly_line_width,
+           xloc = xloc.bar_time)
+        var weekly_label = label.new(x = weekly_limit_right,
+           y = weekly_open,
+           text = "WO    ",
+           style = weekly_label_style,
+           textcolor = weekly_label_color,
+           size = monthly_label_size,
+           xloc = xloc.bar_time)
+
+        line.set_x1(weekly_line, weekly_time)
+    	line.set_x2(weekly_line, weekly_limit_right)
+    	line.set_y1(weekly_line, weekly_open)
+    	line.set_y2(weekly_line, weekly_open)
+    	label.set_x(weekly_label, weekly_limit_right)
+    	label.set_y(weekly_label, weekly_open)
+
+    	// the weekly open can be the daily open too (dayrange)
+        // only the weekly will be draw, in these case we update its label
+	    if is_weekly_open and can_show_daily
+            label.set_text(weekly_label, "DO / WO            ")
+
+    if can_show_monthly
+        monthly_limit_right = get_limit_right(monthly_extend_right)
+        
+        var monthlyLine = line.new(x1 = monthly_time,
+           x2 = monthly_limit_right,
+           y1 = monthly_open,
+           y2 = monthly_open,
+           color = monthly_line_color,
+           width = monthly_line_width,
+           xloc = xloc.bar_time)
+        var monthlyLabel = label.new(x = monthly_limit_right,
+           y = monthly_open, text = "MO    ",
+           style = monthly_label_style,
+           textcolor = monthly_label_color,
+           size = monthly_label_size,
+           xloc = xloc.bar_time)
+
+        line.set_x1(monthlyLine, monthly_time)
+    	line.set_x2(monthlyLine, monthly_limit_right)
+    	line.set_y1(monthlyLine, monthly_open)
+    	line.set_y2(monthlyLine, monthly_open)
+    	label.set_x(monthlyLabel, monthly_limit_right)
+        label.set_y(monthlyLabel, monthly_open)
+
+        // the monthly open can be the weekly open (dayrange 1st) and/or daily open too
+        // only the monthly will be draw, in these case we update its label
+        if is_monthly_open
+            if can_show_daily
+                label.set_text(monthlyLabel, "DO / MO            ")
+            if is_weekly_open
+                if can_show_weekly
+                    label.set_text(monthlyLabel, "WO / MO            ")
+                if can_show_daily and can_show_weekly
+                    label.set_text(monthlyLabel, "DO / WO / MO                ")
+
+        // the start of the line is drew from the first week of the month
+        // if the first day of the weekly candle (dayrange) is the 2nd of the month
+        // we fix the start of the line position on the previous weekly candle
+        if timeframe.isweekly and dayofweek(monthly_time) != drange
+            line.set_x1(monthlyLine, monthly_time - (weekly_time - weekly_time[1]))
+
+    if can_show_dayrange
+        var dayrange_limit_right = get_limit_right(weekly_extend_right)
+    
+        var dayrange_high_line = line.new(x1 = weekly_time,
+           x2 = dayrange_limit_right,
+           y1 = dayrange_high,
+           y2 = dayrange_high,
+           color = dayrange_line_color,
+           width = dayrange_line_width,
+           xloc = xloc.bar_time)
+        var dayrange_high_label = label.new(x = dayrange_limit_right,
+           y = weekly_open,
+           text = "RH    ",
+           style = dayrange_label_style,
+           textcolor = dayrange_label_color,
+           size = dayrange_label_size,
+           xloc = xloc.bar_time)
+           
+        line.set_x1(dayrange_high_line, weekly_time)
+        line.set_x2(dayrange_high_line, dayrange_limit_right)
+        line.set_y1(dayrange_high_line, dayrange_high)
+        line.set_y2(dayrange_high_line, dayrange_high)
+        label.set_x(dayrange_high_label, dayrange_limit_right)
+        label.set_y(dayrange_high_label, dayrange_high)
+        
+        var dayrange_low_line = line.new(x1 = weekly_time,
+           x2 = dayrange_limit_right,
+           y1 = dayrange_low,
+           y2 = dayrange_low,
+           color = dayrange_line_color,
+           width = dayrange_line_width,
+           xloc = xloc.bar_time)
+        var dayrange_low_label = label.new(x = dayrange_limit_right,
+           y = weekly_open,
+           text = "RL    ",
+           style = dayrange_label_style,
+           textcolor = dayrange_label_color,
+           size = dayrange_label_size,
+           xloc = xloc.bar_time)
+    
+        line.set_x1(dayrange_low_line, weekly_time)
+        line.set_x2(dayrange_low_line, dayrange_limit_right)
+        line.set_y1(dayrange_low_line, dayrange_low)
+        line.set_y2(dayrange_low_line, dayrange_low)
+        label.set_x(dayrange_low_label, dayrange_limit_right)
+        label.set_y(dayrange_low_label, dayrange_low)    
+    
+        var dayrange_mid_line = line.new(x1 = weekly_time,
+           x2 = dayrange_limit_right,
+           y1 = dayrange_mid,
+           y2 = dayrange_mid,
+           color = dayrange_line_color,
+           style = line.style_dashed,
+           width = dayrange_line_width,
+           xloc = xloc.bar_time)
+        var dayrange_mid_label = label.new(x = dayrange_limit_right,
+           y = weekly_open,
+           text = "RM    ",
+           style = dayrange_label_style,
+           textcolor = dayrange_label_color,
+           size = dayrange_label_size,
+           xloc = xloc.bar_time)
+    
+        line.set_x1(dayrange_mid_line, weekly_time)
+        line.set_x2(dayrange_mid_line, dayrange_limit_right)
+        line.set_y1(dayrange_mid_line, dayrange_mid)
+        line.set_y2(dayrange_mid_line, dayrange_mid)
+        label.set_x(dayrange_mid_label, dayrange_limit_right)
+        label.set_y(dayrange_mid_label, dayrange_mid)    
+
+// ---- Initial Balance
+
+getIB(session_times) =>
+    in_session = time(timeframe.period, session_times)
+    var ib_high = 0.0
+    var ib_low  = 10e10
+    if in_session
+        if not in_session[1]
+            ib_high := high
+            ib_low  := low
+        else
+            ib_high := max(high, ib_high)
+            ib_low  := min(low, ib_low)
+    [in_session, ib_high, ib_low]
+
+[in_day_session, ib_high, ib_low] = getIB("0000-0100:1234567")
+day_ib_start = plot(can_show_ib ? ib_high : na, title="IB High Line", color=color.blue, linewidth=2, style=plot.style_linebr)
+day_ib_end = plot(can_show_ib ? ib_low : na, title="IB Low Line",  color=color.blue,  linewidth=2, style=plot.style_linebr)
+fill(day_ib_start, day_ib_end, color=color.blue, title="IB Background")
+
+// Sessions ---
+
+// Sessions
+period  = 'D'
+L       =   time(period,"0300-1200")
+NY      =   time(period,"1330-2100")
+S       =   time(period,"1700-0200")
+T       =   time(period,"2000-0400")
+Z       =   time(period, "1600-0400")
+bgcolor     (color=na(L) or not can_show_sessions ? na:color.green,transp=80,title='London')
+bgcolor     (color=na(NY) or not can_show_sessions   ?na:color.red,transp=70,title='New York')
+bgcolor     (color=na(S) or not can_show_sessions    ?na:color.purple,transp=90,title='Sydney')
+bgcolor     (color=na(T) or not can_show_sessions    ?na:color.purple,transp=90,title='Tokyo')
+bgcolor     (color=na(Z) or not can_show_sessions    ?na:color.black,transp=90,title='Night')
+
+plotshape(can_show_session_labels and na(L[1]) and not na(L), style=shape.triangleup, size=size.tiny, text="L", location=location.bottom, color=color.black, textcolor=color.white, title="London Open")
+plotshape(can_show_session_labels and not na(L[1]) and na(L), style=shape.triangledown, size=size.tiny, text="L", location=location.bottom, color=color.black, textcolor=color.white, title="London Close")
+plotshape(can_show_session_labels and na(NY[1]) and not na(NY), style=shape.triangleup, size=size.tiny, text="NY", location=location.bottom, color=color.black, textcolor=color.white, title="NY Open")
+plotshape(can_show_session_labels and not na(NY[1]) and na(NY), style=shape.triangledown, size=size.tiny, text="NY", location=location.bottom, color=color.black, textcolor=color.white, title="NY Close")
+plotshape(can_show_session_labels and na(S[1]) and not na(S), style=shape.triangleup, size=size.tiny, text="S", location=location.bottom, color=color.black, textcolor=color.white, title="Sydney Open")
+plotshape(can_show_session_labels and not na(S[1]) and na(S), style=shape.triangledown, size=size.tiny, text="S", location=location.bottom, color=color.black, textcolor=color.white, title="Sydney Close")
+plotshape(can_show_session_labels and na(T[1]) and not na(T), style=shape.triangleup, size=size.tiny, text="T", location=location.bottom, color=color.black, textcolor=color.white, title="Tokyo Open")
+plotshape(can_show_session_labels and not na(T[1]) and na(T), style=shape.triangledown, size=size.tiny, text="T", location=location.bottom, color=color.black, textcolor=color.white, title="Tokyo Close")

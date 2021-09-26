@@ -1,0 +1,98 @@
+// Copied from Pecker, before he dissappeared from CT
+//@version=4
+study(title="PPO ATR Bands", overlay=false,resolution="30")
+
+//----MA
+
+t1= input(120,title="Slow Length")
+t2= input(60,title="Fast Length")
+t3 = input(240, title= "ATR Band Length")
+psar = sar(0.02, 0.02, 0.2)
+evwma(x, y) =>
+    ema(x * volume, y) / ema(volume, y)
+ma = evwma(psar,t1)
+ma1 = hma(hlc3,t2)
+
+//----ATR 
+
+mult1 = input(1.50, minval=1, title="Deviation multiplier 1")
+mult2 = input(2.25, minval=1, title="Deviation multiplier 2")
+mult3 = input(3.00, minval=1, title="Deviation multiplier 3")
+range = tr
+atR= evwma(range,t3)
+up1 = ma + atR * mult1
+up2 = ma + atR * mult2
+up3 = ma + atR * mult3
+dn1 = ma - atR * mult1
+dn2 = ma - atR * mult2
+dn3 = ma - atR * mult3
+
+//---- PPO
+
+ppo = ((ma1 - ma) / ma) * 100
+ppoup1 = ((up1 - dn1) / dn1) * 100
+ppoup2 = ((up2 - dn2) / dn2) * 100
+ppoup3 = ((up3 - dn3) / dn3) * 100
+ppodn1 = ((dn1 - up1) / up1) * 100
+ppodn2 = ((dn2 - up2) / up2) * 100
+ppodn3 = ((dn3 - up3) / up3) * 100
+
+//---- Percentile (can't remember source)
+
+t4        = input(60, title= "Percentile Length")
+pcntAbove = input(90, title="Hi is Above X% of Sample", step=1.0)
+pcntBelow = input(90, title="Lo is Below X% of Sample", step=1.0)
+smplAbove = percentile_nearest_rank(ppo, t4, pcntAbove)
+smplBelow = percentile_nearest_rank(ppo, t4, 100 - pcntBelow)
+
+
+//---- Colour / Plots / Fills
+
+////---- Odin's Volume and Volatility Composite 
+
+// Historical Volume
+
+b = sum(volume,24)
+c = 0.0
+for i = 24 to 1200 by +24
+    c := b[i] + c
+
+d = c / 50
+vol = b / d
+
+// Historical Volatility
+
+b2 = sum(atr(24),24)
+c2 = 0.0
+for i2 = 24 to 1200 by +24
+    c2 := b2[i2] + c2
+
+d2 = c2 / 50
+volat = b2 / d2
+
+composite = vol/volat
+
+f_col(composite)   => composite > 2.5 ? #FFFFFFff : composite > 2.4 ? #FFFFFFef :composite > 2.3 ? #FFFFFFdf : composite > 2.2 ? #FFFFFFcf : composite > 2.1 ? #FFFFFFbf : composite > 2. ? #FFFFFFaf : composite > 1.9 ? #FFFFFF9f : composite > 1.8 ? #FFFFFF8f : composite > 1.7 ? #FFFFFF7f : composite > 1.6 ? #FFFFFF6f : composite > 1.5 ? #FFFFFF5f : composite > 1.4 ? #FFFFFF4f : composite > 1.3 ? #FFFFFF3f : composite > 1.2 ? #FFFFFF2f : composite > 1.1 ? #FFFFFF1f : #FFFFFF10
+
+vcol1 = iff(ppo > 0,f_col(composite),na)
+vcol2 = iff(ppo < 0,f_col(composite),na)
+
+Trend = ppo > 0 ? 1 : -1
+col = Trend == 1 ? color.blue : color.red
+
+plot(ppo,title= "Ma", color=col, transp= 75, style=plot.style_area)
+aa=plot(ppoup1,title= "ATR top1", color=color.white,transp=70)
+bb=plot(ppoup2,title= "ATR top2", color=color.gray,transp=70)
+cc=plot(ppoup3,title= "ATR top3", color=color.white,transp=70)
+dd=plot(ppodn1,title= "ATR bot1", color=color.white,transp=70)
+ee=plot(ppodn2,title= "ATR bot2", color=color.gray,transp=70)
+ff=plot(ppodn3,title= "ATR bot3", color=color.white,transp=70)
+roof= plot(ppo > smplAbove ? ppo : smplAbove, title="roof", color=na,transp=100)
+probOB= plot(smplAbove, title="OB", color=color.blue,transp=100)
+probOS= plot(smplBelow, title="OS", color=color.blue,transp=100)
+floor= plot(ppo < smplBelow ? ppo : smplBelow, title="floor", color=na,transp=100)
+fill(bb,cc,title="Fill Top ATR",color=vcol1)
+fill(ee,ff,title="Fill Bottom ATR",color=vcol2)
+fill(roof,   probOB, color=color.blue, transp=0,title="fill z percentile top")
+fill(floor,  probOS, color=color.red, transp=0, title="fill z percentile bottom")
+hline(0,title="Midline",linestyle=hline.style_solid, color=color.gray)

@@ -1,0 +1,96 @@
+// Daily, Weekly and Monthly VWAP with Standard Deviation Bands
+
+//@version=4
+study("D/W/M VWAPs", overlay=true)
+
+d = input(true, title="Show Daily VWAP")
+// dcolor = input(color.gray, type=input.color, title="Daily VWAP Color")
+dshowdev = input(true, title="Show Daily VWAP St Dev Band")
+w = input(true, title="Show Weekly VWAP")
+wshowdev = input(true, title="Show Weekly VWAP St Dev Band")
+m = input(true, title="Show Monthly VWAP")
+mshowdev = input(true, title="Show Monthly VWAP St Dev Band")
+hc = input(true, title="Hide in Own Time Frame")
+src = input(title = "Source", type = input.source, defval = hlc3)
+stdev1 = input(1.51, title="St Dev")
+stdev2 = input(2.51, title="St Dev")
+
+getVwap(period) =>
+    t = time(period)
+    start = na(t[1]) or t > t[1]
+    float[] result = na
+    sumSrc = src * volume
+    sumVol = volume
+    sumVol2 = volume * volume
+    sumSrc := start ? sumSrc : sumSrc + sumSrc[1]
+    sumVol := start ? sumVol : sumVol + sumVol[1]
+    xvwap = sumSrc / sumVol
+    sumVol2 := start ? volume*src*src : sumVol2[1]+volume*src*src
+    dev = sqrt(max(sumVol2/sumVol - xvwap*xvwap, 0))   
+    [xvwap, dev]
+    
+
+dvwap = float(na)
+dvwapUp1 = float(na)
+dvwapUp2 = float(na)
+dvwapDn1 = float(na)
+dvwapDn2 = float(na)
+wvwap = float(na)
+wvwapUp1 = float(na)
+wvwapUp2 = float(na)
+wvwapDn1 = float(na)
+wvwapDn2 = float(na)
+mvwap = float(na)
+mvwapUp1 = float(na)
+mvwapUp2 = float(na)
+mvwapDn1 = float(na)
+mvwapDn2 = float(na)
+
+if (d and timeframe.isintraday and timeframe.period != '60' and timeframe.period != '120' and timeframe.period != '240' and timeframe.period != '720')
+    [xvwap, dev] = getVwap("D")
+    dvwap := xvwap
+    if (dshowdev)
+        dvwapUp1 := xvwap + stdev1 * dev
+        dvwapDn1 := xvwap - stdev1 * dev
+        dvwapUp2 := xvwap + stdev2 * dev
+        dvwapDn2 := xvwap - stdev2 * dev
+if (w and not timeframe.isdaily and not (hc and timeframe.isweekly) and not timeframe.ismonthly)
+    [xvwap, dev] = getVwap("W")
+    wvwap := xvwap
+    if (wshowdev)
+        wvwapUp1 := xvwap + stdev1 * dev
+        wvwapDn1 := xvwap - stdev1 * dev
+        wvwapUp2 := xvwap + stdev2 * dev
+        wvwapDn2 := xvwap - stdev2 * dev
+if (m and not (hc and timeframe.ismonthly))
+    [xvwap, dev] = getVwap("M")
+    mvwap := xvwap
+    if (mshowdev)
+        mvwapUp1 := xvwap + stdev1 * dev
+        mvwapDn1 := xvwap - stdev1 * dev
+        mvwapUp2 := xvwap + stdev2 * dev
+        mvwapDn2 := xvwap - stdev2 * dev
+plot(dvwap, title="Daily VWAP", color=color.gray)
+DU1=plot(dvwapUp1, title="Daily VWAP Upper Band 1", color=color.gray)
+DD1=plot(dvwapDn1, title="Daily VWAP Upper Band 2", color=color.gray)
+DU2=plot(dvwapUp2, title="Daily VWAP Lower Band 1", color=color.gray)
+DD2=plot(dvwapDn2, title="Daily VWAP Lower Band 2", color=color.gray)
+fill(DU1, DU2, color=color.gray, transp=93, title="Daily Over Bought Fill")
+fill(DD1, DD2, color=color.gray, transp=93, title="Daily Over Sold Fill")
+fill(DU2, DD2, color=color.gray, transp=93, title="Daily Inner Fill")
+plot(wvwap, title="Weekly VWAP", color=color.orange)
+WU1=plot(wvwapUp1, title="Weekly VWAP Upper Band 1", color=color.orange)
+WD1=plot(wvwapDn1, title="Weekly VWAP Upper Band 2", color=color.orange)
+WU2=plot(wvwapUp2, title="Weekly VWAP Lower Band 1", color=color.orange)
+WD2=plot(wvwapDn2, title="Weekly VWAP Lower Band 2", color=color.orange)
+fill(WU1, WU2, color=color.orange, transp=93, title="Weekly Over Bought Fill")
+fill(WD1, WD2, color=color.orange, transp=93, title="Weekly Over Sold Fill")
+plot(mvwap, title="Monthly VWAP", color=color.red)
+MU1=plot(mvwapUp1, title="Monthly VWAP Upper Band 1", color=color.red)
+MD1=plot(mvwapDn1, title="Monthly VWAP Upper Band 2", color=color.red)
+MU2=plot(mvwapUp2, title="Monthly VWAP Lower Band 1", color=color.red)
+MD2=plot(mvwapDn2, title="Monthly VWAP Lower Band 2", color=color.red)
+fill(MD1,MU1, color=color.red, transp=93, title="Monthly Inner Band")
+fill(MU1, MU2, color=color.red, transp=93, title="Monthly Over Bought Fill")
+fill(MD1, MD2, color=color.red, transp=93, title="Monthly Over Sold Fill")
+fill(WU2, WD2, color=color.gray, transp=93, title="Weekly Inner Fill")

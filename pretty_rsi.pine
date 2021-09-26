@@ -1,0 +1,28 @@
+// Classic RSI with more style config options
+//@version=4
+study("RSI")
+
+// RSI Inputs
+src = input(close, "Source", type = input.source)
+len = input(14, minval=1, title="Length")
+os = input(30, minval=1, title="Oversold")
+ob = input(70, minval=1, title="Overbought")
+
+// RSI Code
+up = rma(max(change(src), 0), len)
+down = rma(-min(change(src), 0), len)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - (100 / (1 + up / down))
+band1 = hline(ob, "Upper Band", color=#C0C0C0)
+band5 = hline(50, "Mid Band", color=#C0C0C0)
+bandHM = hline (55, "High Mid", color=#C0C0C0)
+bandLM = hline(45, "Low Mid", color=#C0C0C0)
+band0 = hline(os, "Lower Band", color=#C0C0C0)
+bandMax = hline(100, "Max Band", color=#C0C0C0)
+bandMin = hline(0, "Min Band", color=#C0C0C0)
+
+//fill(band1, band0, color=#9915FF, transp=90, title="Background")
+fill(bandMax, band1, color=#C0C0C0, transp=90, title="Top")
+fill(bandMin, band0, color=#C0C0C0, transp=90, title="Bottom")
+fill(bandLM, bandHM, color=#C0C0C0, transp=90, title="Mid")
+fill(band1, band0, color=#C0C0C0, transp=90, title="Inner Band")
+plot(rsi, color=(rsi > ob or rsi < os ? color.red : (rsi > 50 and rsi[1] < 50) or (rsi < 50 and rsi[1] > 50) ? color.blue : color.black), transp=0)
