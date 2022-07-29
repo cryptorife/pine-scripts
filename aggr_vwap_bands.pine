@@ -1,0 +1,66 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © crypto_rife
+
+//@version=5
+indicator("Aggr VWAP Bands", overlay=true)
+
+tf = input.timeframe("12M", "Time Frame", options=['1W', '1M', '3M', '12M'])
+src = input.source(title = "Source", defval = hlc3)
+stdev = input.float(1.0, title="St Dev")
+
+bgColor = color.new(color.gray, 90)
+borderColor = color.new(color.gray, 100)
+lineColor = color.new(color.blue, 50)
+
+getVwap(period) =>
+    t = time(period)
+    [c1, v1] = request.security('COINBASE:BTCUSD', timeframe.period, [close, volume])
+    [c2, v2] = request.security('BINANCE:BTCUSDT', timeframe.period, [close, volume])
+    [c3, v3] = request.security('FTX:BTCUSD', timeframe.period, [close, volume])
+    [c4, v4] = request.security('BITFINEX:BTCUSD', timeframe.period, [close, volume])
+    c = (c1+c2+c3+c4)/4
+    v = (v1+v2+v3+v4)
+    // c = close
+    // v = volume
+    start = na(t[1]) or t > t[1]
+    sumSrc = c * v
+    sumVol = v
+    sumVol2 = v * v
+    sumSrc := start ? sumSrc : sumSrc + sumSrc[1]
+    sumVol := start ? sumVol : sumVol + sumVol[1]
+    vwap = sumSrc / sumVol
+    sumVol2 := start ? v*c*c : sumVol2[1]+v*c*c
+    dev = math.sqrt(math.max(sumVol2/sumVol - vwap*vwap, 0))
+    upper = vwap + stdev*dev
+    lower = vwap - stdev*dev
+    [vwap, upper, lower]
+
+[vwap, upper, lower] = getVwap(tf)
+
+plot(vwap, style=plot.style_circles)
+
+hi = plot(upper, transp=100)
+lo = plot(lower, transp=100)
+fill(hi, lo, color=bgColor)
+
+t = time(tf)
+start = na(t[1]) or t > t[1]
+
+var pvwapLine = line(na)
+var pvwapBox = box(na)
+
+pvwap = float(na)
+pupper = float(na)
+plower = float(na)
+
+pvwap := start ? vwap[1] : pvwap[1]
+pupper := start ? upper[1] : pupper[1]
+plower := start ? lower[1] : plower[1]
+
+// plot(pvwap, style=plot.style_circles)
+
+if (start)
+    line.delete(pvwapLine)
+    box.delete(pvwapBox)
+    pvwapLine := line.new(x1=bar_index-1, y1=vwap[1], x2=bar_index+1, y2=vwap[1], extend=extend.right, style=line.style_dotted, color=lineColor, width=2)
+    pvwapBox := box.new(bar_index, pupper, bar_index+1, (plower), extend=extend.right, border_color=borderColor, bgcolor=bgColor)
